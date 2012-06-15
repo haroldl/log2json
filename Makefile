@@ -3,7 +3,7 @@ all: Main doc/index.html
 Main: *.hs
 	ghc --make Main
 
-doc/index.html: LogFormat.hs
+doc/index.html: Text/LogFormat.hs
 	haddock -h -o doc $<
 
 clean:

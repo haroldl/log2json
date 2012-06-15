@@ -19,7 +19,7 @@
 {- | LogFormat is a Haskell module that makes it trivial to parse access
      log records.
  -}
-module LogFormat where
+module Text.LogFormat where
 
 import Data.Map
 import Text.Parsec

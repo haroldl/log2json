@@ -1,3 +1,16 @@
+log2json
+--------
+
+The log2json command takes the LogFormat string to use and a list of
+filenames as command-line arguments. If nothing is supplied, it goes
+into "demo" mode, prompting you for a LogFormat and a single log
+record to parse.
+
+    log2json '%b' a.log b.log
+
+LogFormat
+---------
+
 LogFormat is a Haskell module that makes it trivial to parse access
 log records.
 

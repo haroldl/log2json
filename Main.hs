@@ -17,24 +17,37 @@
 -}
 module Main where
 
-import LogFormat
+import Text.LogFormat
 
-import Data.Map
+import Data.Map ( toList )
+import System.Environment ( getArgs )
+import System.IO
 import Text.JSON
 import Text.Parsec
 
-main = do (logFormat, parser) <- getLogFormatParser
-          parseALogRecord logFormat parser
+main = do args <- getArgs
+          logFormat <- if length args < 1
+                         then do putStrLn "Enter your LogFormat string:"
+                                 getLine
+                         else return (head args)
+          parser <- compileLogFormat logFormat
+          if length args < 2
+             then processFileHandle parser stdin
+             else do sequence $ map (processFile parser) (tail args)
+                     return ()
 
--- Ask for a LogFormat string, parse it to get a log record parser.
-getLogFormatParser =
-  do putStrLn "Enter your LogFormat string:"
-     logFormat <- getLine
-     case (logFormatParser logFormat) of
-       Left parseErr ->
-         fail $ invalidThingMessage "LogFormat string" logFormat parseErr
-       Right parser ->
-         return (logFormat, parser)
+processFile parser filename = withFile filename ReadMode (processFileHandle parser)
+
+processFileHandle parser fh = do contents <- hGetContents fh
+                                 putStr contents
+
+-- Parse the LogFormat string to get a log record parser.
+compileLogFormat logFormat =
+  case (logFormatParser logFormat) of
+     Left parseErr ->
+       fail $ invalidThingMessage "LogFormat string" logFormat parseErr
+     Right parser ->
+       return parser
 
 -- Ask for a log record, parse it, and print the resulting JSON object.
 parseALogRecord logFormat parser =
