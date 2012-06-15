@@ -31,15 +31,23 @@ main = do args <- getArgs
                                  getLine
                          else return (head args)
           parser <- compileLogFormat logFormat
+          let multiParser = sepEndBy parser newline
           if length args < 2
-             then processFileHandle parser stdin
-             else do sequence $ map (processFile parser) (tail args)
+             then processFileHandle multiParser "stdin" stdin
+             else do sequence $ map (processFile multiParser) (tail args)
                      return ()
 
-processFile parser filename = withFile filename ReadMode (processFileHandle parser)
+processFile parser filename = withFile filename ReadMode (processFileHandle parser filename)
 
-processFileHandle parser fh = do contents <- hGetContents fh
-                                 putStr contents
+processFileHandle parser filename fh =
+  do contents <- hGetContents fh
+     case (parse parser name contents) of
+       Left parseErr ->
+         fail $ invalidThingMessage "log file" filename parseErr
+       Right maps ->
+         let json = encode $ map (toJSObject . toList) maps in
+           putStrLn json
+  where name = "LogFormat parser for file " ++ filename
 
 -- Parse the LogFormat string to get a log record parser.
 compileLogFormat logFormat =
