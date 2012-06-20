@@ -58,14 +58,12 @@ compileLogFormat logFormat =
        return parser
 
 -- Ask for a log record, parse it, and print the resulting JSON object.
-parseALogRecord logFormat parser =
-  do putStrLn "Enter a log record to parse:"
-     inputLine <- getLine
-     case (parse parser ("LogFormat Tool [" ++ logFormat ++ "]") inputLine) of
-       Left parseErr ->
-         fail $ invalidThingMessage "log record" inputLine parseErr
-       Right map ->
-         putStrLn $ encode $ toJSObject $ toList map
+parseALogRecord logFormat parser inputLine =
+  case (parse parser ("LogFormat Tool [" ++ logFormat ++ "]") inputLine) of
+    Left parseErr ->
+      fail $ invalidThingMessage "log record" inputLine parseErr
+    Right map ->
+      putStrLn $ encode $ toJSObject $ toList map
 
 invalidThingMessage thing input parseError =
   "Invalid " ++ thing ++ " \"" ++ input ++ "\": " ++ (show parseError)

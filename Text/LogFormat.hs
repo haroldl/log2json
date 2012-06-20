@@ -84,6 +84,26 @@ combineMapBuilders (p1:ps) map = do
     Nothing -> combineMapBuilders ps map
     Just (k,v) -> combineMapBuilders ps (insert k v map)
 
+-- | Take a parser and convert it to parse a Maybe (key, value) pair instead
+--   of just a value.
+keyValueParser :: a -> Parser b -> Parser (Maybe (a, b))
+keyValueParser key parser = do value <- parser
+                               return $ Just (key, value)
+
+concatParser :: String -> Parser (String -> String -> String)
+concatParser sepStr = do value <- string sepStr
+                         return (\a b -> a ++ sepStr ++ b)
+
+-- | Parser for IP addresses
+ipParser :: Parser String
+ipParser = chainl1 (many1 digit) (concatParser ".")
+
+-- | Parser for hostnames
+hostnameParser :: Parser String
+hostnameParser = chainl1 (many1 alphaNum) (concatParser ".")
+
+digits = many1 digit
+
 -- | Build a parser for a 'Rule'.
 --
 --   For 'Keyword' 'Rule's:
@@ -103,41 +123,33 @@ parserFor (Literal lit) = do string lit
                              return Nothing
 
 -- The URL path requested, not including any query string.
-parserFor (Keyword 'U' Nothing) = do value <- many1 $ alphaNum <|> char '/'
-                                     return $ Just ("path", value)
+parserFor (Keyword 'U' Nothing) = keyValueParser "path" (many1 $ alphaNum <|> char '/')
 
 -- The request method
-parserFor (Keyword 'm' Nothing) = do value <- many1 $ oneOf ['A'..'Z']
-                                     return $ Just ("method", value)
+parserFor (Keyword 'm' Nothing) = keyValueParser "method" $ (many1 $ oneOf ['A'..'Z'])
 
 -- The process ID or thread id of the child that serviced the request.
-parserFor (Keyword 'P' Nothing) = do value <- many1 digit
-                                     return $ Just ("processId", value)
+parserFor (Keyword 'P' Nothing) = keyValueParser "processId" digits
 
 -- The time taken to serve the request, in seconds.
-parserFor (Keyword 'T' Nothing) = do value <- many1 digit
-                                     return $ Just ("timeTakenSeconds", value)
+parserFor (Keyword 'T' Nothing) = keyValueParser "timeTakenSeconds" digits
 
 -- The time taken to serve the request, in microseconds.
-parserFor (Keyword 'D' Nothing) = do value <- many1 digit
-                                     return $ Just ("timeTakenMicroseconds", value)
+parserFor (Keyword 'D' Nothing) = keyValueParser "timeTakenMicroseconds" digits
 
 -- Size of response in bytes, excluding HTTP headers.
-parserFor (Keyword 'B' Nothing) = do value <- many1 digit
-                                     return $ Just ("bytes", value)
+parserFor (Keyword 'B' Nothing) = keyValueParser "bytes" $ digits
 
 -- Size of response in bytes, excluding HTTP headers.
 -- In CLF format, i.e. a '-' rather than a 0 when no bytes are sent.
-parserFor (Keyword 'b' Nothing) = do value <- (many1 digit) <|> (string "-")
-                                     return $ Just ("bytesCLF", value)
+parserFor (Keyword 'b' Nothing) = keyValueParser "bytesCLF" valueParser
+  where valueParser = digits <|> (string "-")
 
 -- Remote IP-address
-parserFor (Keyword 'a' Nothing) = do value <- sepBy (many1 digit) (string ".")
-                                     return $ Just ("remoteIP", foldl1 (\a b -> a ++ "." ++ b) value)
+parserFor (Keyword 'a' Nothing) = keyValueParser "remoteIP" ipParser
 
 -- Local IP-address
-parserFor (Keyword 'A' Nothing) = do value <- sepBy (many1 digit) (string ".")
-                                     return $ Just ("localIP", foldl1 (\a b -> a ++ "." ++ b) value)
+parserFor (Keyword 'A' Nothing) = keyValueParser "localIP" ipParser
 
 -- The query string (prepended with a ? if a query string exists, otherwise an empty string)
 parserFor (Keyword 'q' Nothing) = do value <- (string "") <|> queryStringParser
@@ -149,7 +161,17 @@ parserFor (Keyword 'q' Nothing) = do value <- (string "") <|> queryStringParser
 -- Status.
 -- For requests that got internally redirected, this is the status of the *original* request,
 -- %...>s for the last.
-parserFor (Keyword 's' mod) = do value <- many1 alphaNum
-                                 return $ Just (format mod, value)
+parserFor (Keyword 's' mod) = keyValueParser (format mod) (many1 alphaNum)
   where format Nothing = "statusOriginal"
         format (Just ">") = "statusLast"
+
+--| Remote host
+parserFor (Keyword 'h' Nothing) = keyValueParser "remoteHost" hostnameParser
+
+-- The canonical ServerName of the server serving the request.
+parserFor (Keyword 'v' Nothing) = keyValueParser "canonicalServerName" hostnameParser
+
+-- The server name according to the UseCanonicalName setting.
+parserFor (Keyword 'V' Nothing) = keyValueParser "serverName" hostnameParser
+
+-- Next up: l t r i

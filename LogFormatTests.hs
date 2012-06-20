@@ -17,16 +17,17 @@
 -}
 module LogFormatTests where
 
-import LogFormat
+import Text.LogFormat
 
 import Data.Map as M
 import Test.HUnit
 import Text.Parsec as P
 
-runTests = runTestTT allTests
+main = runTestTT allTests
 
 allTests = TestList [testU, testLiteral, testBadLit, testUAndLit,
-                     testGetMethod, testPostMethod, testRemoteIP, testLocalIP]
+                     testGetMethod, testPostMethod, testRemoteIP, testLocalIP,
+                     testBytesCLF, testBytesCLF2, testBytesCLFBad1, testBytesCLFBad2]
 
 data ParseResult a = Failure String
                    | SuccessForLiteral
@@ -42,15 +43,17 @@ parserTest name message expected parser input =
                      Right Nothing      -> SuccessForLiteral
                      Right (Just value) -> Success value
 
+eofParser p = do value <- p
+                 eof
+                 return value
+
 literalParser lit = parserFor (Literal lit)
 
 charRuleParser ch = parserFor (Keyword ch Nothing)
 
 testU = parserTest "testU" "Should parse path" expected parser "/abc"
   where expected = Success ("path", "/abc")
-        parser = do path <- charRuleParser 'U'
-                    eof
-                    return path
+        parser = eofParser $ charRuleParser 'U'
 
 testLiteral = parserTest "testLiteral" "Should match literal" expected parser "hi"
   where expected = SuccessForLiteral :: ParseResult (String, String)
@@ -82,15 +85,29 @@ testPostMethod = parserTest "testPostMethod" "Should accept POST method" expecte
 
 testRemoteIP = parserTest "testRemoteIP" "Should handle remote IP address" expected parser "123.45.67.89"
   where expected = Success ("remoteIP", "123.45.67.89")
-        parser = do path <- charRuleParser 'a'
-                    eof
-                    return path
+        parser = eofParser $ charRuleParser 'a'
 
 testLocalIP = parserTest "testLocalIP" "Should handle local IP address" expected parser "123.45.67.89"
   where expected = Success ("localIP", "123.45.67.89")
-        parser = do path <- charRuleParser 'A'
-                    eof
-                    return path
+        parser = eofParser $ charRuleParser 'A'
+
+testBytesCLF = parserTest "testBytesCLF" "Should handle bytes CLF value -" expected parser "-"
+  where expected = Success ("bytesCLF", "-")
+        parser = charRuleParser 'b'
+
+testBytesCLF2 = parserTest "testBytesCLF2" "Should handle bytes CLF numbers" expected parser "1234"
+  where expected = Success ("bytesCLF", "1234")
+        parser = charRuleParser 'b'
+
+testBytesCLFBad1 = parserTest "testBytesCLFBad1" "Should fail with comma" expected parser "1,234"
+  where expected = Failure errMessage  :: ParseResult (String, String)
+        errMessage = "\"Unit Test: testBytesCLFBad1\" (line 1, column 2):\nunexpected ','\nexpecting digit or end of input"
+        parser = eofParser $ charRuleParser 'b'
+
+testBytesCLFBad2 = parserTest "testBytesCLFBad2" "Should fail for letters" expected parser "abc"
+  where expected = Failure errMessage  :: ParseResult (String, String)
+        errMessage = "\"Unit Test: testBytesCLFBad2\" (line 1, column 1):\nunexpected \"a\"\nexpecting digit or \"-\""
+        parser = charRuleParser 'b'
 
 -- TODO : test these log formats
 
@@ -99,3 +116,5 @@ commonLogFormat = "%v %h %l %u %t \"%r\" %>s %b"
 
 -- NCSA extended/combined log format
 ncsaLogFormat = "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-agent}i\""
+
+defaultLogFormat = "%h %l %u %t \"%r\" %>s %b"
