@@ -14,7 +14,7 @@ Cabal-Version:       >=1.2
 
 Executable log2json
   Main-is:           Main.hs
-  Build-Depends:     base, containers, parsec, json
+  Build-Depends:     base, containers, parsec >= 3, json == 0.3.6
 
 Library
   Exposed-Modules: Text.LogFormat

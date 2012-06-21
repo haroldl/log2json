@@ -165,7 +165,7 @@ parserFor (Keyword 's' mod) = keyValueParser (format mod) (many1 alphaNum)
   where format Nothing = "statusOriginal"
         format (Just ">") = "statusLast"
 
---| Remote host
+-- Remote host
 parserFor (Keyword 'h' Nothing) = keyValueParser "remoteHost" hostnameParser
 
 -- The canonical ServerName of the server serving the request.
