@@ -110,17 +110,19 @@ testBytesCLFBad2 = parserTest "testBytesCLFBad2" "Should fail for letters" expec
         errMessage = "\"Unit Test: testBytesCLFBad2\" (line 1, column 1):\nunexpected \"a\"\nexpecting digit or \"-\""
         parser = charRuleParser 'b'
 
-testThreeGroups = "testThreeGroups" ~: do step1
-  where logFormat = "%%%b%%%s%%%>s"
-        inputLine = "%123%abc%def"
-        expected = M.fromList [("statusOriginal", "abc"), ("statusLast", "def"), ("bytesCLF", "123")]
-        parserResult = logFormatParser logFormat
-        step1 = case parserResult of
-                  Left parseErr -> assertFailure $ "Failed to compile LogFormat: " ++ show parseErr
-                  Right parser  -> step2 parser
-        step2 parser = case parse parser "testThreeGroups" inputLine of
-                  Left parseErr -> assertFailure $ "Failed to parse sample log line: " ++ show parseErr
-                  Right map -> assertEqual "Checking log record parse result" expected map
+parseRecordTest testName logFormat inputLine expected =
+    testName ~: do parser <- buildParser logFormat
+                   map <- applyParser (eofParser parser) inputLine
+                   assertEqual "Checking log record parse result" expected map
+  where buildParser logFormat = case logFormatParser logFormat of
+          Left parseErr -> do assertFailure $ "Failed to compile LogFormat: " ++ show parseErr ; fail ""
+          Right parser  -> return parser
+        applyParser parser inputLine = case parse parser testName inputLine of
+          Left parseErr -> do assertFailure $ "Failed to parse sample log line: " ++ show parseErr ; fail ""
+          Right map -> return map
+
+testThreeGroups = parseRecordTest "testThreeGroups" "%%%b%%%s%%%>s" "%123%abc%def" exp
+  where exp = M.fromList [("statusOriginal", "abc"), ("statusLast", "def"), ("bytesCLF", "123")]
 
 -- TODO : test these log formats
 
