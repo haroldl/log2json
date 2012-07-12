@@ -53,15 +53,22 @@ combineLiterals (Literal l1 : Literal l2 : rs) =
 combineLiterals (r:rs) = r : combineLiterals rs
 
 -- Parser for a single % rule in the LogFormat string, including %%.
-rule = do char '%'
-          mod <- optionMaybe modifier
-          format <- oneOf "%aABbCDefhHilmnopPqrstTuUvVXIO"
-          if mod == (Just ">") && format /= 's'
-            then fail $ "The > modifier can only be used with %s but you used it with %" ++ [format]
-            else return $ buildResult format mod
-  where modifier = (string ">")
-        buildResult '%' _ = Literal "%"
-        buildResult fmt mod = Keyword fmt mod
+rule = try simpleRule <|> try literalRule <|> sRule
+
+simpleRule = do char '%'
+                format <- oneOf "aABbCDefhHilmnopPqrtTuUvVXIO"
+                return $ Keyword format Nothing
+
+literalRule = do string "%%"
+                 return $ Literal "%"
+
+sRule = do char '%'
+           mod <- optionMaybe $ string ">"
+           char 's'
+           return $ Keyword 's' mod
+
+-- iRule
+-- (between (char '{') (char '}') (many alphaNum))
 
 literal = do str <- many1 $ noneOf "%"
              return $ Literal str

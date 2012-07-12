@@ -27,7 +27,8 @@ main = runTestTT allTests
 
 allTests = TestList [testU, testLiteral, testBadLit, testUAndLit,
                      testGetMethod, testPostMethod, testRemoteIP, testLocalIP,
-                     testBytesCLF, testBytesCLF2, testBytesCLFBad1, testBytesCLFBad2]
+                     testBytesCLF, testBytesCLF2, testBytesCLFBad1, testBytesCLFBad2,
+                     testThreeGroups]
 
 data ParseResult a = Failure String
                    | SuccessForLiteral
@@ -108,6 +109,18 @@ testBytesCLFBad2 = parserTest "testBytesCLFBad2" "Should fail for letters" expec
   where expected = Failure errMessage  :: ParseResult (String, String)
         errMessage = "\"Unit Test: testBytesCLFBad2\" (line 1, column 1):\nunexpected \"a\"\nexpecting digit or \"-\""
         parser = charRuleParser 'b'
+
+testThreeGroups = "testThreeGroups" ~: do step1
+  where logFormat = "%%%b%%%s%%%>s"
+        inputLine = "%123%abc%def"
+        expected = M.fromList [("statusOriginal", "abc"), ("statusLast", "def"), ("bytesCLF", "123")]
+        parserResult = logFormatParser logFormat
+        step1 = case parserResult of
+                  Left parseErr -> assertFailure $ "Failed to compile LogFormat: " ++ show parseErr
+                  Right parser  -> step2 parser
+        step2 parser = case parse parser "testThreeGroups" inputLine of
+                  Left parseErr -> assertFailure $ "Failed to parse sample log line: " ++ show parseErr
+                  Right map -> assertEqual "Checking log record parse result" expected map
 
 -- TODO : test these log formats
 
