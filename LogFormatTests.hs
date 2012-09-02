@@ -31,111 +31,74 @@ allTests = TestList [testU, testLiteral, testBadLit, testUAndLit,
                      testThreeGroups,
                      testHeader, testHeaderQuotes, testHeaderAndCo, testAnonymousHeader]
 
-data ParseResult a = Failure String
-                   | SuccessForLiteral
-                   | Success a
-  deriving (Show, Eq, Ord)
+buildParser logFormat = case logFormatParser logFormat of
+  Left parseErr -> do assertFailure $ "Failed to compile LogFormat: " ++ show parseErr ; fail ""
+  Right parser  -> return parser
 
--- Helper to build a bunch of parser test cases.
-parserTest name message expected parser input =
-    name ~: do assertEqual message expected actual
-  where actual = let result = P.parse parser ("Unit Test: " ++ name) input in
-                   case result of
-                     Left parseError    -> Failure (show parseError)
-                     Right Nothing      -> SuccessForLiteral
-                     Right (Just value) -> Success value
-
-eofParser p = do value <- p
-                 eof
-                 return value
-
-literalParser lit = parserFor (Literal lit)
-
-charRuleParser ch = parserFor (Keyword ch Nothing)
-
-testU = parserTest "testU" "Should parse path" expected parser "/abc"
-  where expected = Success ("path", "/abc")
-        parser = eofParser $ charRuleParser 'U'
-
-testLiteral = parserTest "testLiteral" "Should match literal" expected parser "hi"
-  where expected = SuccessForLiteral :: ParseResult (String, String)
-        parser = literalParser "hi"
-
-testBadLit = parserTest "testBadLit" "Should fail to match literal" expected parser "def"
-  where expected = Failure errMessage  :: ParseResult (String, String)
-        errMessage = "\"Unit Test: testBadLit\" (line 1, column 1):\nunexpected \"d\"\nexpecting \"abc\""
-        parser = literalParser "abc"
-
-testUAndLit = parserTest "testUAndLit" "Should match a path and literal" expected parser "/path/to/somewhere?a=1"
-  where expected = Success (M.fromList [("path", "/path/to/somewhere")])
-        rawParser = combineMapBuilders [charRuleParser 'U', literalParser "?a=1"] M.empty
-        parser = do result <- rawParser
-                    return $ Just result
-
-testGetMethod = parserTest "testGetMethod" "Should accept GET method" expected parser "methodGET"
-  where expected = Success (M.fromList [("method", "GET")])
-        rawParser = combineMapBuilders [literalParser "method", charRuleParser 'm'] M.empty
-        parser = do result <- rawParser
-                    return $ Just result
-
-
-testPostMethod = parserTest "testPostMethod" "Should accept POST method" expected parser "methodPOST"
-  where expected = Success (M.fromList [("method", "POST")])
-        rawParser = combineMapBuilders [literalParser "method", charRuleParser 'm'] M.empty
-        parser = do result <- rawParser
-                    return $ Just result
-
-testRemoteIP = parserTest "testRemoteIP" "Should handle remote IP address" expected parser "123.45.67.89"
-  where expected = Success ("remoteIP", "123.45.67.89")
-        parser = eofParser $ charRuleParser 'a'
-
-testLocalIP = parserTest "testLocalIP" "Should handle local IP address" expected parser "123.45.67.89"
-  where expected = Success ("localIP", "123.45.67.89")
-        parser = eofParser $ charRuleParser 'A'
-
-testBytesCLF = parserTest "testBytesCLF" "Should handle bytes CLF value -" expected parser "-"
-  where expected = Success ("bytesCLF", "-")
-        parser = charRuleParser 'b'
-
-testBytesCLF2 = parserTest "testBytesCLF2" "Should handle bytes CLF numbers" expected parser "1234"
-  where expected = Success ("bytesCLF", "1234")
-        parser = charRuleParser 'b'
-
-testBytesCLFBad1 = parserTest "testBytesCLFBad1" "Should fail with comma" expected parser "1,234"
-  where expected = Failure errMessage  :: ParseResult (String, String)
-        errMessage = "\"Unit Test: testBytesCLFBad1\" (line 1, column 2):\nunexpected ','\nexpecting digit or end of input"
-        parser = eofParser $ charRuleParser 'b'
-
-testBytesCLFBad2 = parserTest "testBytesCLFBad2" "Should fail for letters" expected parser "abc"
-  where expected = Failure errMessage  :: ParseResult (String, String)
-        errMessage = "\"Unit Test: testBytesCLFBad2\" (line 1, column 1):\nunexpected \"a\"\nexpecting digit or \"-\""
-        parser = charRuleParser 'b'
+failedParseTest testName logFormat inputLine expMessage =
+    testName ~: do parser <- buildParser logFormat
+                   case parse parser testName inputLine of
+                     Left parseErr -> assertEqual testName expMessage (show parseErr)
+                     Right _ -> assertFailure $ "Parse succeeded, but was expecting failure: " ++ expMessage
 
 parseRecordTest testName logFormat inputLine expected =
     testName ~: do parser <- buildParser logFormat
-                   map <- applyParser (eofParser parser) inputLine
-                   assertEqual "Checking log record parse result" expected map
-  where buildParser logFormat = case logFormatParser logFormat of
-          Left parseErr -> do assertFailure $ "Failed to compile LogFormat: " ++ show parseErr ; fail ""
-          Right parser  -> return parser
-        applyParser parser inputLine = case parse parser testName inputLine of
+                   map <- applyParser parser (inputLine ++ "\n")
+                   assertEqual "Checking log record parse result" (M.fromList expected) map
+  where applyParser parser inputLine = case parse parser testName inputLine of
           Left parseErr -> do assertFailure $ "Failed to parse sample log line: " ++ show parseErr ; fail ""
           Right map -> return map
 
-testThreeGroups = parseRecordTest "testThreeGroups" "%%%b%%%s%%%>s" "%123%abc%def\n" exp
-  where exp = M.fromList [("statusOriginal", "abc"), ("statusLast", "def"), ("bytesCLF", "123")]
+testU = parseRecordTest "testU" "%U" "/abc" exp
+  where exp = [("path", "/abc")]
 
-testHeader = parseRecordTest "testHeader"  "%{Content-Type}i" "hello world\n" exp
-  where exp = M.fromList [("header:Content-Type", "hello world")]
+testLiteral = parseRecordTest "testLiteral" "hi" "hi" exp
+  where exp = []
 
-testHeaderQuotes = parseRecordTest "testHeaderQuotes" "'%{foo}i'" "'''\n" exp
-  where exp = M.fromList [("header:foo", "'")]
+testBadLit = failedParseTest "testBadLit" "abc" "def" errMessage
+  where errMessage = "\"testBadLit\" (line 1, column 1):\nunexpected \"d\"\nexpecting \"abc\""
 
-testHeaderAndCo = parseRecordTest "testHeaderAndCo"  "%%%b'%{Content-Type}i'%B%%" "%123'hello world'456%\n" exp
-  where exp = M.fromList [("bytesCLF", "123"), ("header:Content-Type", "hello world"), ("bytes", "456")]
+testUAndLit = parseRecordTest "testUAndLit" "%U?a=1" "/path/to/somewhere?a=1" exp
+  where exp = [("path", "/path/to/somewhere")]
 
-testAnonymousHeader = parseRecordTest "testAnonymousHeader" "%i" "hello\n" exp
-  where exp = M.fromList [("header", "hello")]
+testGetMethod = parseRecordTest "testGetMethod" "method%m" "methodGET" exp
+  where exp = [("method", "GET")]
+
+testPostMethod = parseRecordTest "testPostMethod" "method%m" "methodPOST" exp
+  where exp = [("method", "POST")]
+
+testRemoteIP = parseRecordTest "testRemoteIP" "%a" "123.45.67.89" exp
+  where exp = [("remoteIP", "123.45.67.89")]
+
+testLocalIP = parseRecordTest "testLocalIP" "%A" "123.45.67.89" exp
+  where exp = [("localIP", "123.45.67.89")]
+
+testBytesCLF = parseRecordTest "testBytesCLF" "%b" "-" exp
+  where exp = [("bytesCLF", "-")]
+
+testBytesCLF2 = parseRecordTest "testBytesCLF2" "%b" "1234" exp
+  where exp = [("bytesCLF", "1234")]
+
+testBytesCLFBad1 = failedParseTest "testBytesCLFBad1" "%b" "1,234" errMessage
+  where errMessage = "\"testBytesCLFBad1\" (line 1, column 2):\nunexpected \",\"\nexpecting digit or new-line"
+
+testBytesCLFBad2 = failedParseTest "testBytesCLFBad2" "%b" "abc" errMessage
+  where errMessage = "\"testBytesCLFBad2\" (line 1, column 1):\nunexpected \"a\"\nexpecting digit or \"-\""
+
+testThreeGroups = parseRecordTest "testThreeGroups" "%%%b%%%s%%%>s" "%123%abc%def" exp
+  where exp = [("statusOriginal", "abc"), ("statusLast", "def"), ("bytesCLF", "123")]
+
+testHeader = parseRecordTest "testHeader"  "%{Content-Type}i" "hello world" exp
+  where exp = [("header:Content-Type", "hello world")]
+
+testHeaderQuotes = parseRecordTest "testHeaderQuotes" "'%{foo}i'" "'''" exp
+  where exp = [("header:foo", "'")]
+
+testHeaderAndCo = parseRecordTest "testHeaderAndCo"  "%%%b'%{Content-Type}i'%B%%" "%123'hello world'456%" exp
+  where exp = [("bytesCLF", "123"), ("header:Content-Type", "hello world"), ("bytes", "456")]
+
+testAnonymousHeader = parseRecordTest "testAnonymousHeader" "%i" "hello" exp
+  where exp = [("header", "hello")]
 
 -- TODO : test these log formats
 

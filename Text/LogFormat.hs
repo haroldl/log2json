@@ -82,39 +82,20 @@ buildLogRecordParser rules = Prelude.foldr combiner eolParser rules
         combiner (Keyword 'i' mod) followingParser = headerParser mod followingParser
         combiner rule followingParser = do m1 <- parserFor rule
                                            m2 <- followingParser
-                                           return $ union (maybePairToMap m1) m2
+                                           return $ union m1 m2
 
 headerParser mod followingParser = do
     value <- manyTill anyChar (lookAhead (try followingParser))
     rest <- followingParser
-    return $ union rest (singleton key value)
+    return $ insert key value rest
   where key = case mod of
                 Nothing -> "header"
                 Just m -> "header:" ++ m
 
-maybePairToMap (Just (k,v)) = singleton k v
-maybePairToMap Nothing = empty
-
-mapAppender map [] = map
-mapAppender map (v1:vs) = mapAppender (insert v1 v1 map) vs
-
--- | Update a map with each of the key-value pairs built by some instances of a
---   Monad. We'll use it to take a bunch of 'Parser's that each parse an
---   optional key-value pair and merge those into a 'Parser' that builds a 'Map'.
-combineMapBuilders :: (Monad m, Ord k) =>
-                        [m (Maybe (k,v))] -> Map k v -> m (Map k v)
-combineMapBuilders [] map = return map
-combineMapBuilders (p1:ps) map = do
-  result <- p1
-  case result of
-    Nothing -> combineMapBuilders ps map
-    Just (k,v) -> combineMapBuilders ps (insert k v map)
-
--- | Take a parser and convert it to parse a Maybe (key, value) pair instead
---   of just a value.
-keyValueParser :: a -> Parser b -> Parser (Maybe (a, b))
+-- | Take a parser and convert it to parse a Map instead of just a value.
+keyValueParser :: a -> Parser b -> Parser (Map a b)
 keyValueParser key parser = do value <- parser
-                               return $ Just (key, value)
+                               return $ singleton key value
 
 concatParser :: String -> Parser (String -> String -> String)
 concatParser sepStr = do value <- string sepStr
@@ -142,11 +123,11 @@ digits = many1 digit
 --   @
 --       parserFor (Keyword \'U\' Nothing)
 --   @
-parserFor :: Rule -> Parser (Maybe (String, String))
+parserFor :: Rule -> Parser (Map String String)
 
 -- Build a parser that matches an exact string literal and returns Nothing.
 parserFor (Literal lit) = do string lit
-                             return Nothing
+                             return empty
 
 -- The URL path requested, not including any query string.
 parserFor (Keyword 'U' Nothing) = keyValueParser "path" (many1 $ alphaNum <|> char '/')
@@ -179,7 +160,7 @@ parserFor (Keyword 'A' Nothing) = keyValueParser "localIP" ipParser
 
 -- The query string (prepended with a ? if a query string exists, otherwise an empty string)
 parserFor (Keyword 'q' Nothing) = do value <- (string "") <|> queryStringParser
-                                     return $ Just ("queryString", value)
+                                     return $ singleton "queryString" value
   where queryStringParser = do char '?'
                                qs <- many1 $ alphaNum <|> char '&' <|> char '='
                                return $ "?" ++ qs
