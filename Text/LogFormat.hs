@@ -79,17 +79,16 @@ buildLogRecordParser :: [Rule] -> Parser (Map String String)
 buildLogRecordParser rules = Prelude.foldr combiner eolParser rules
   where eolParser = do newline
                        return empty
-        combiner (Keyword 'i' mod) followingParser = headerParser mod "" followingParser
+        combiner (Keyword 'i' mod) followingParser = headerParser mod followingParser
         combiner rule followingParser = do m1 <- parserFor rule
                                            m2 <- followingParser
                                            return $ union (maybePairToMap m1) m2
 
-headerParser mod partialHeader followingParser = try parserForRestOfLine <|> parseNextCharAsPartOfHeader
-  where parserForRestOfLine = do rest <- followingParser
-                                 return $ union rest (singleton key partialHeader)
-        parseNextCharAsPartOfHeader = do c <- anyChar
-                                         headerParser mod (partialHeader ++ [c]) followingParser
-        key = case mod of
+headerParser mod followingParser = do
+    value <- manyTill anyChar (lookAhead (try followingParser))
+    rest <- followingParser
+    return $ union rest (singleton key value)
+  where key = case mod of
                 Nothing -> "header"
                 Just m -> "header:" ++ m
 
