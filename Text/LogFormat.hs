@@ -53,10 +53,10 @@ combineLiterals (Literal l1 : Literal l2 : rs) =
 combineLiterals (r:rs) = r : combineLiterals rs
 
 -- Parser for a single % rule in the LogFormat string, including %%.
-rule = try simpleRule <|> try literalRule <|> sRule
+rule = try simpleRule <|> try literalRule <|> try sRule <|> iRule
 
 simpleRule = do char '%'
-                format <- oneOf "aABbCDefhHilmnopPqrtTuUvVXIO"
+                format <- oneOf "aABbCDefhHlmnopPqrtTuUvVXIO"
                 return $ Keyword format Nothing
 
 literalRule = do string "%%"
@@ -67,14 +67,34 @@ sRule = do char '%'
            char 's'
            return $ Keyword 's' mod
 
--- iRule
--- (between (char '{') (char '}') (many alphaNum))
+iRule = do char '%'
+           mod <- optionMaybe $ between (char '{') (char '}') (many $ alphaNum <|> char '-')
+           char 'i'
+           return $ Keyword 'i' mod
 
 literal = do str <- many1 $ noneOf "%"
              return $ Literal str
 
 buildLogRecordParser :: [Rule] -> Parser (Map String String)
-buildLogRecordParser rules = combineMapBuilders (Prelude.map parserFor rules) empty
+buildLogRecordParser rules = Prelude.foldr combiner eolParser rules
+  where eolParser = do newline
+                       return empty
+        combiner (Keyword 'i' mod) followingParser = headerParser mod "" followingParser
+        combiner rule followingParser = do m1 <- parserFor rule
+                                           m2 <- followingParser
+                                           return $ union (maybePairToMap m1) m2
+
+headerParser mod partialHeader followingParser = try parserForRestOfLine <|> parseNextCharAsPartOfHeader
+  where parserForRestOfLine = do rest <- followingParser
+                                 return $ union rest (singleton key partialHeader)
+        parseNextCharAsPartOfHeader = do c <- anyChar
+                                         headerParser mod (partialHeader ++ [c]) followingParser
+        key = case mod of
+                Nothing -> "header"
+                Just m -> "header:" ++ m
+
+maybePairToMap (Just (k,v)) = singleton k v
+maybePairToMap Nothing = empty
 
 mapAppender map [] = map
 mapAppender map (v1:vs) = mapAppender (insert v1 v1 map) vs
@@ -181,4 +201,4 @@ parserFor (Keyword 'v' Nothing) = keyValueParser "canonicalServerName" hostnameP
 -- The server name according to the UseCanonicalName setting.
 parserFor (Keyword 'V' Nothing) = keyValueParser "serverName" hostnameParser
 
--- Next up: l t r i
+-- Next up: l t r

@@ -28,7 +28,8 @@ main = runTestTT allTests
 allTests = TestList [testU, testLiteral, testBadLit, testUAndLit,
                      testGetMethod, testPostMethod, testRemoteIP, testLocalIP,
                      testBytesCLF, testBytesCLF2, testBytesCLFBad1, testBytesCLFBad2,
-                     testThreeGroups]
+                     testThreeGroups,
+                     testHeader, testHeaderQuotes, testHeaderAndCo, testAnonymousHeader]
 
 data ParseResult a = Failure String
                    | SuccessForLiteral
@@ -121,8 +122,20 @@ parseRecordTest testName logFormat inputLine expected =
           Left parseErr -> do assertFailure $ "Failed to parse sample log line: " ++ show parseErr ; fail ""
           Right map -> return map
 
-testThreeGroups = parseRecordTest "testThreeGroups" "%%%b%%%s%%%>s" "%123%abc%def" exp
+testThreeGroups = parseRecordTest "testThreeGroups" "%%%b%%%s%%%>s" "%123%abc%def\n" exp
   where exp = M.fromList [("statusOriginal", "abc"), ("statusLast", "def"), ("bytesCLF", "123")]
+
+testHeader = parseRecordTest "testHeader"  "%{Content-Type}i" "hello world\n" exp
+  where exp = M.fromList [("header:Content-Type", "hello world")]
+
+testHeaderQuotes = parseRecordTest "testHeaderQuotes" "'%{foo}i'" "'''\n" exp
+  where exp = M.fromList [("header:foo", "'")]
+
+testHeaderAndCo = parseRecordTest "testHeaderAndCo"  "%%%b'%{Content-Type}i'%B%%" "%123'hello world'456%\n" exp
+  where exp = M.fromList [("bytesCLF", "123"), ("header:Content-Type", "hello world"), ("bytes", "456")]
+
+testAnonymousHeader = parseRecordTest "testAnonymousHeader" "%i" "hello\n" exp
+  where exp = M.fromList [("header", "hello")]
 
 -- TODO : test these log formats
 

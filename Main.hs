@@ -31,7 +31,7 @@ main = do args <- getArgs
                                  getLine
                          else return (head args)
           parser <- compileLogFormat logFormat
-          let multiParser = sepEndBy parser newline
+          let multiParser = many parser
           if length args < 2
              then processFileHandle multiParser "stdin" stdin
              else do sequence $ map (processFile multiParser) (tail args)
