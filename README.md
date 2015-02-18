@@ -2,11 +2,12 @@ log2json
 --------
 
 The log2json command takes the LogFormat string to use and a list of
-filenames as command-line arguments. If nothing is supplied, it goes
-into "demo" mode, prompting you for a LogFormat and a single log
-record to parse.
+filenames as command-line arguments. If nothing is supplied, it uses
+the Apache httpd default LogFormat string `%h %l %u %t "%r" %>s %b`.
 
-    log2json '%b' a.log b.log
+    log2json < some.log
+
+    log2json '%h %u %t %{tid}P "%r" %>s %b' < another.log
 
 LogFormat
 ---------

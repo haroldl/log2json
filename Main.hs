@@ -30,7 +30,9 @@ main = do args <- getArgs
                          then do putStrLn "Enter your LogFormat string:"
                                  getLine
                          else return (head args)
-          parser <- compileLogFormat logFormat
+          parser <- compileLogFormat $ if logFormat == "default"
+                                         then "%h %l %u %t \"%r\" %>s %b"
+                                         else logFormat
           let multiParser = many parser
           if length args < 2
              then processFileHandle multiParser "stdin" stdin

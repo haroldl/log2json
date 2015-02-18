@@ -1,5 +1,5 @@
 Name:                log2json
-Version:             0.1
+Version:             0.2
 Synopsis:            Turn log file records into JSON.
 Description:         Take an httpd.conf style LogFormat string and parse
                      log files into JSON records.
@@ -11,7 +11,7 @@ Homepage:            https://github.com/haroldl/log2json
 Bug-Reports:         https://github.com/haroldl/log2json/issues
 Category:            Logging, JSON, Text, Utils, Tools
 Build-Type:          Simple
-Cabal-Version:       >=1.6
+Cabal-Version:       >=1.18
 Extra-Source-Files:  README.md LogFormatTests.hs
 
 Source-Repository head
@@ -20,9 +20,11 @@ Source-Repository head
 
 Executable log2json
   Main-is:           Main.hs
-  Build-Depends:     base >= 3 && < 5, containers, parsec >= 3, json == 0.3.6
+  Default-Language:  Haskell2010
+  Build-Depends:     haskell2010 >= 1, containers, parsec >= 3.1.5, json == 0.9
 
 Library
   Exposed-Modules: Text.LogFormat
   Other-Modules:
-
+  Default-Language:  Haskell2010
+  Build-Depends:     haskell2010 >= 1, containers, parsec >= 3.1.5, json == 0.9
