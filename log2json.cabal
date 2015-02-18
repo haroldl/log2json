@@ -24,4 +24,5 @@ Executable log2json
 
 Library
   Exposed-Modules: Text.LogFormat
+  Other-Modules:
 

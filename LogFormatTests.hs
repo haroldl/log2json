@@ -28,8 +28,8 @@ main = runTestTT allTests
 allTests = TestList [testU, testLiteral, testBadLit, testUAndLit,
                      testGetMethod, testPostMethod, testRemoteIP, testLocalIP,
                      testBytesCLF, testBytesCLF2, testBytesCLFBad1, testBytesCLFBad2,
-                     testThreeGroups,
-                     testHeader, testHeaderQuotes, testHeaderAndCo, testAnonymousHeader]
+                     testThreeGroups, testHeader, testHeaderAndPid, testProcessId,
+                     testHeaderQuotes, testHeaderAndCo, testAnonymousHeader]
 
 buildParser logFormat = case logFormatParser logFormat of
   Left parseErr -> do assertFailure $ "Failed to compile LogFormat: " ++ show parseErr ; fail ""
@@ -80,7 +80,7 @@ testBytesCLF2 = parseRecordTest "testBytesCLF2" "%b" "1234" exp
   where exp = [("bytesCLF", "1234")]
 
 testBytesCLFBad1 = failedParseTest "testBytesCLFBad1" "%b" "1,234" errMessage
-  where errMessage = "\"testBytesCLFBad1\" (line 1, column 2):\nunexpected \",\"\nexpecting digit or new-line"
+  where errMessage = "\"testBytesCLFBad1\" (line 1, column 2):\nunexpected \",\"\nexpecting digit or lf new-line"
 
 testBytesCLFBad2 = failedParseTest "testBytesCLFBad2" "%b" "abc" errMessage
   where errMessage = "\"testBytesCLFBad2\" (line 1, column 1):\nunexpected \"a\"\nexpecting digit or \"-\""
@@ -90,6 +90,12 @@ testThreeGroups = parseRecordTest "testThreeGroups" "%%%b%%%s%%%>s" "%123%abc%de
 
 testHeader = parseRecordTest "testHeader"  "%{Content-Type}i" "hello world" exp
   where exp = [("header:Content-Type", "hello world")]
+
+testHeaderAndPid = parseRecordTest "testHeaderAndPid"  "%{Content-Type}i %P" "hello world 123" exp
+  where exp = [("header:Content-Type", "hello world"), ("processId", "123")]
+
+testProcessId = parseRecordTest "testProcessId" "%{pid}P %{tid}P" "12 34" exp
+  where exp = [("processId", "12"), ("taskId", "34")]
 
 testHeaderQuotes = parseRecordTest "testHeaderQuotes" "'%{foo}i'" "'''" exp
   where exp = [("header:foo", "'")]

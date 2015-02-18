@@ -53,10 +53,17 @@ combineLiterals (Literal l1 : Literal l2 : rs) =
 combineLiterals (r:rs) = r : combineLiterals rs
 
 -- Parser for a single % rule in the LogFormat string, including %%.
-rule = try simpleRule <|> try literalRule <|> try sRule <|> iRule
+rule = try simpleRule <|>
+       try literalRule <|>
+       try sRule <|>
+       try cookieRule <|>
+       try envVarRule <|>
+       try requestHeaderRule <|>
+       try replyHeaderRule <|>
+       pidRule
 
 simpleRule = do char '%'
-                format <- oneOf "aABbCDefhHlmnopPqrtTuUvVXIO"
+                format <- oneOf "aABbDfhHlmnpqrTuUvVXIO"
                 return $ Keyword format Nothing
 
 literalRule = do string "%%"
@@ -67,10 +74,23 @@ sRule = do char '%'
            char 's'
            return $ Keyword 's' mod
 
-iRule = do char '%'
-           mod <- optionMaybe $ between (char '{') (char '}') (many $ alphaNum <|> char '-')
-           char 'i'
-           return $ Keyword 'i' mod
+cookieRule = bracedModRule 'C'
+envVarRule = bracedModRule 'e'
+requestHeaderRule = bracedModRule 'i'
+replyHeaderRule = bracedModRule 'o'
+timeRule = bracedModRule 't'
+
+bracedModRule ruleChar = do
+  char '%'
+  mod <- optionMaybe $ between (char '{') (char '}') (many $ noneOf "{}")
+  char ruleChar
+  return $ Keyword ruleChar mod
+
+pidRule = do
+  char '%'
+  mod <- optionMaybe $ between (char '{') (char '}') $ try (string "pid") <|> string "tid"
+  char 'P'
+  return $ Keyword 'P' mod
 
 literal = do str <- many1 $ noneOf "%"
              return $ Literal str
@@ -80,14 +100,30 @@ buildLogRecordParser rules = Prelude.foldr combiner eolParser rules
   where eolParser = do newline
                        return empty
         combiner (Keyword 'i' mod) followingParser = headerParser mod followingParser
+        combiner (Keyword 't' mod) followingParser = timeParser mod followingParser
+        combiner (Keyword 'r' mod) followingParser = requestLineParser followingParser
+        combiner (Keyword 'l' mod) followingParser = lognameParser followingParser
         combiner rule followingParser = do m1 <- parserFor rule
                                            m2 <- followingParser
                                            return $ union m1 m2
 
-headerParser mod followingParser = do
-    value <- manyTill anyChar (lookAhead (try followingParser))
+-- | Parse the shortest string value possible before followingParser will succeed after
+--   and add that (key, value) to the map parsed by followingParser.
+minimalString :: Ord a => a -> Parser (Map a String) -> Parser (Map a String)
+minimalString key followingParser = do
+    value <- manyTill anyChar (lookAhead $ try followingParser)
     rest <- followingParser
     return $ insert key value rest
+
+lognameParser followingParser = minimalString "logname" followingParser
+requestLineParser followingParser = minimalString "requestLine" followingParser
+
+timeParser mod followingParser = minimalString key followingParser
+  where key = case mod of
+                Nothing -> "time"
+                Just m -> "time:" ++ m
+
+headerParser mod followingParser = minimalString key followingParser
   where key = case mod of
                 Nothing -> "header"
                 Just m -> "header:" ++ m
@@ -137,6 +173,8 @@ parserFor (Keyword 'm' Nothing) = keyValueParser "method" $ (many1 $ oneOf ['A'.
 
 -- The process ID or thread id of the child that serviced the request.
 parserFor (Keyword 'P' Nothing) = keyValueParser "processId" digits
+parserFor (Keyword 'P' (Just "pid")) = keyValueParser "processId" digits
+parserFor (Keyword 'P' (Just "tid")) = keyValueParser "taskId" digits
 
 -- The time taken to serve the request, in seconds.
 parserFor (Keyword 'T' Nothing) = keyValueParser "timeTakenSeconds" digits
@@ -180,5 +218,3 @@ parserFor (Keyword 'v' Nothing) = keyValueParser "canonicalServerName" hostnameP
 
 -- The server name according to the UseCanonicalName setting.
 parserFor (Keyword 'V' Nothing) = keyValueParser "serverName" hostnameParser
-
--- Next up: l t r

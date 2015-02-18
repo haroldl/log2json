@@ -4,3 +4,5 @@
 Main
 doc
 dist
+.cabal-sandbox/
+cabal.sandbox.config
